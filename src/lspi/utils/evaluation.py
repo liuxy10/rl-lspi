@@ -1,4 +1,4 @@
-def evaluate_policy(agent, env, max_length=1000, n_eval_episodes=10):
+def evaluate_policy(agent, env, max_length=1000, n_eval_episodes=10, vis = False):
     """Runs policy for ``n_eval_episodes`` episodes.
     
     Adapted from :
@@ -16,6 +16,9 @@ def evaluate_policy(agent, env, max_length=1000, n_eval_episodes=10):
     """
     episode_rewards, episode_lengths = [], []
     while len(episode_rewards) < n_eval_episodes:
+        if vis:
+           print(f"eval of episode {len(episode_rewards)} / {n_eval_episodes}  ")
+        # Reset the environment
         obs = env.reset()
         done = False
         episode_reward = 0.0
@@ -25,6 +28,9 @@ def evaluate_policy(agent, env, max_length=1000, n_eval_episodes=10):
             obs, reward, done, info = env.step(action)
             episode_reward += reward
             episode_length += 1
+            if vis:
+                env.render()
+            
         episode_rewards.append(episode_reward)
         episode_lengths.append(episode_length)
 
