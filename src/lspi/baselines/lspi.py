@@ -1,8 +1,9 @@
 from collections import namedtuple
 
 import numpy as np
+from tqdm import trange
 
-Sample = namedtuple('Sample', ['s', 'a', 'r', 's_'])
+Sample = namedtuple('Sample', ['s', 'a', 'r', 's_', 'done'])
 
 
 class LSPolicyIteration:
@@ -39,19 +40,21 @@ class LSPolicyIteration:
 
     def init_memory(self):
         self.memory = []
-        count = 0
+        count = 0 # count of collected samples
         done = True
         while count < (self.memory_size + 1):
             if done:
                 obs = self.env.reset()
                 if self.memory_type == 'episode':
                     count += 1
+                    print("percentage done = {:.2f}%".format(count / (self.memory_size + 1) * 100))
             action = self.env.action_space.sample()
             next_obs, reward, done, _ = self.env.step(action)
-            self.memory.append(Sample(obs, action, reward, next_obs))
+            self.memory.append(Sample(obs, action, reward, next_obs, done))
             obs = next_obs
             if self.memory_type == 'sample':
                 count += 1
+                print("percentage done = {:.2f}%".format(count / (self.memory_size + 1) * 100))
 
         if self.eval_type == 'batch':
             k = self.agent.features_size
@@ -126,3 +129,4 @@ class LSPolicyIteration:
     def train_step(self):
         w = self.eval()
         self.agent.set_weights(w)
+        
