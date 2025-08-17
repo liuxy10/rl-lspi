@@ -6,46 +6,25 @@ import lspi
 import os, sys
 import matplotlib.pyplot as plt
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.lspi.utils import vis_memory_visited_state
+from src.lspi.utils import vis_memory_visited_state, vis_best_action
 
-
+from gym.envs.registration import register
 def score(agent):
     episodes_reward, episode_lengths = lspi.utils.evaluate_policy(agent,
                                                     agent.env,
                                                     max_length=500,
                                                     n_eval_episodes=10,
                                                     vis = False)
-    return np.mean(episodes_reward), int(np.mean(episode_lengths))
-
-env = gym.make('PuddleWorld-v0')
+    return np.mean(np.array(episodes_reward) / np.array(episode_lengths)),np.std(np.array(episodes_reward) / np.array(episode_lengths)), int(np.mean(episode_lengths))
 
 
-def vis_best_action(bl, n_grid = 40):
-    import matplotlib.pyplot as plt
-    fig = plt.figure(figsize=(6, 6))
-    # for each grid point, visualize the best action
-    grid_x, grid_y = np.meshgrid(np.linspace(0, 1, n_grid+1), np.linspace(0, 1, n_grid+1))
-    grid_points = np.column_stack([grid_x.ravel(), grid_y.ravel()])
-    actions = np.array([bl.env.actions[bl.agent.predict(pt)] for pt in grid_points])
-    plt.quiver(grid_x, grid_y, actions[:, 0]/n_grid * 5, actions[:, 1]/n_grid * 5,
-               angles='xy', scale_units='xy', scale=0.3, color='blue', alpha=0.5)
-    pixels = np.zeros((n_grid, n_grid, 3))
-    # overlay stage reward
-    for i in range(n_grid):
-        for j in range(n_grid):
-            x = float(i)/n_grid
-            y = float(j)/n_grid
-            pixels[j,i,:] = bl.env.get_reward(np.array([x,y]))
-    pixels -= pixels.min()
-    pixels *=1./pixels.max()
-    # pixels = np.floor(pixels)
-    
-    plt.imshow(pixels, extent=(0, 1, 0, 1), origin='lower', alpha=0.5)
-    plt.title("Best Action for Each Grid Point")
-    plt.xlabel("X")
-    plt.ylabel("Y")
-    plt.axis("equal")
-    plt.show()
+register(
+    id='LSPI-Puddle-v0',
+    entry_point='lspi.envs:PuddleEnv',
+    max_episode_steps=500
+)
+env = gym.make('LSPI-Puddle-v0')
+env.start = None
 
 # build the agent
 grids = [[0.,0.25, 0.5,0.25, 1.], [0.,0.25, 0.5,0.25, 1.]]
@@ -57,12 +36,12 @@ agent = lspi.agents.RadialAgent(env, centers, sigma)
 gamma = 0.95
 memory_size = 10
 memory_type = 'episode'
-eval_type = 'sherman_morrison' #'batch'
+eval_type = 'sherman_morrison' # 'iterative' # 'batch'
 
 
 # run the algorithm for multiple times
-n_iter = 5
-n_reps = 5
+n_iter = 6
+n_reps = 3
 all_rewards = np.zeros((n_reps, n_iter + 1))
 
 for rep in range(n_reps):
@@ -72,22 +51,34 @@ for rep in range(n_reps):
     baseline = lspi.baselines.LSPolicyIteration(env, agent, gamma, memory_size,
                                                 memory_type, eval_type)
     baseline.init_memory()
+    print("mean of memory:", np.mean([sample.r for sample in baseline.memory], axis=0))
+
     # Visualize the visited states in memory
-    # vis_memory_visited_state(baseline)
+    vis_memory_visited_state(baseline)
+    vis_best_action(baseline)
 
-    rew, steps = score(agent)
+    rew, std, steps = score(agent)
     all_rewards[rep, 0] = rew
-    print('iteration = {:02d} - average reward : {:.2f} - average number of steps : {:04d}'.
-          format(0, rew, steps))
-
+    print('iteration = {:02d} - average reward : {:.2f} +- {:.2f} '.
+              format(0, rew, std))
+    w = baseline.agent.weights.copy()
     for it in range(1, n_iter + 1):
+        
         baseline.train_step()
-        vis_best_action(baseline)
-        rew, steps = score(agent)
+        print("w diff = ", np.linalg.norm(baseline.agent.weights - w))
+        w = baseline.agent.weights.copy()
+        # vis_best_action(baseline)
+        rew, std, steps = score(agent)
         all_rewards[rep, it] = rew
         # env.render() # Optional: rendering can slow down the process
-        print('iteration = {:02d} - average reward : {:.2f} - average number of steps : {:04d}'.
-              format(it, rew, steps))
+        print('iteration = {:02d} - average reward : {:.2f} +- {:.2f} '.
+              format(it, rew, std))
+
+
+    vis_best_action(baseline)
+    baseline.init_memory(agent=agent, update_size=10)  # Re-initialize memory for the next repetition
+    vis_memory_visited_state(baseline)
+    print("mean of memory:", np.mean([sample.r for sample in baseline.memory], axis=0))
     # delete cache and variables in this run
     del baseline
     del agent
