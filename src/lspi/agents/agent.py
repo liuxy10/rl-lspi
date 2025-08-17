@@ -31,9 +31,11 @@ class Agent:
     def _get_features(self, obs):
         pass
 
-    def predict(self, obs):
+    def predict(self, obs, eps = 0.0):
         values = np.dot(
             self.weights.reshape(self.action_size, self.features_size),
             self.get_features(obs))
         action = np.argmax(values)
+        if np.random.rand() < eps:
+            action = np.random.randint(self.action_size)
         return action

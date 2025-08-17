@@ -38,23 +38,30 @@ class LSPolicyIteration:
         self.eval_type = eval_type
         self.memory_type = memory_type
 
-    def init_memory(self):
-        self.memory = []
+    def init_memory(self, agent = None, update_size = 10):
+        """Initialize the memory with random samples (if policy is None) or update memory or episodes."""
+        if agent is None:
+            self.memory = []
         count = 0 # count of collected samples
-        done = True
-        while count < (self.memory_size + 1):
+        done, done_idx = True, []
+        limit = (self.memory_size + 1) if agent is None else update_size
+        while count < limit:
             if done:
+                done_idx.append(len(self.memory))
                 obs = self.env.reset()
                 if self.memory_type == 'episode':
                     count += 1
-                    print("percentage done = {:.2f}%".format(count / (self.memory_size + 1) * 100))
-            action = self.env.action_space.sample()
+                    # print("percentage done = {:.2f}%".format(count / (self.memory_size + 1) * 100)) if agent is None else print("epi update done = {:.2f}%".format(count / update_size * 100))
+            action = self.env.action_space.sample() if agent is None else agent.predict(obs)
             next_obs, reward, done, _ = self.env.step(action)
             self.memory.append(Sample(obs, action, reward, next_obs, done))
             obs = next_obs
             if self.memory_type == 'sample':
                 count += 1
-                print("percentage done = {:.2f}%".format(count / (self.memory_size + 1) * 100))
+                # print("percentage done = {:.2f}%".format(count / (self.memory_size + 1) * 100)) if agent is None else print("sample update done = {:.2f}%".format(count / update_size * 100))
+        # only keep latest memory size
+        print("memory size before trimming = {}".format(len(self.memory)), "done index", done_idx)
+        self.memory = self.memory[-self.memory_size:] if self.memory_type == 'sample' else self.memory[ -done_idx[0]:]
 
         if self.eval_type == 'batch':
             k = self.agent.features_size
