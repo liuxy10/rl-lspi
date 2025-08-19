@@ -6,25 +6,25 @@ import lspi
 import os, sys
 import matplotlib.pyplot as plt
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.lspi.utils import vis_memory_visited_state, vis_best_action
+from src.lspi.utils import vis_memory_visited_state, vis_best_action, vis_Q
 
-from gym.envs.registration import register
+
 def score(agent):
     episodes_reward, episode_lengths = lspi.utils.evaluate_policy(agent,
                                                     agent.env,
-                                                    max_length=500,
+                                                    max_length=400,
                                                     n_eval_episodes=10,
                                                     vis = False)
     return np.mean(np.array(episodes_reward) / np.array(episode_lengths)),np.std(np.array(episodes_reward) / np.array(episode_lengths)), int(np.mean(episode_lengths))
 
 
+from gym.envs.registration import register
 register(
     id='LSPI-Puddle-v0',
     entry_point='lspi.envs:PuddleEnv',
-    max_episode_steps=500
+    max_episode_steps=400,
 )
-env = gym.make('LSPI-Puddle-v0')
-env.start = None
+env = gym.make('LSPI-Puddle-v0', start = None)
 
 # build the agent
 grids = [[0.,0.25, 0.5,0.25, 1.], [0.,0.25, 0.5,0.25, 1.]]
@@ -34,7 +34,7 @@ agent = lspi.agents.RadialAgent(env, centers, sigma)
 
 # build the trainer
 gamma = 0.95
-memory_size = 10
+memory_size = 5
 memory_type = 'episode'
 eval_type = 'sherman_morrison' # 'iterative' # 'batch'
 
@@ -51,7 +51,7 @@ for rep in range(n_reps):
     baseline = lspi.baselines.LSPolicyIteration(env, agent, gamma, memory_size,
                                                 memory_type, eval_type)
     baseline.init_memory()
-    print("mean of memory:", np.mean([sample.r for sample in baseline.memory], axis=0))
+    print("mean of memory (random policy):", np.mean([sample.r for sample in baseline.memory], axis=0))
 
     # Visualize the visited states in memory
     vis_memory_visited_state(baseline)
@@ -67,7 +67,7 @@ for rep in range(n_reps):
         baseline.train_step()
         print("w diff = ", np.linalg.norm(baseline.agent.weights - w))
         w = baseline.agent.weights.copy()
-        # vis_best_action(baseline)
+        vis_best_action(baseline)
         rew, std, steps = score(agent)
         all_rewards[rep, it] = rew
         # env.render() # Optional: rendering can slow down the process
