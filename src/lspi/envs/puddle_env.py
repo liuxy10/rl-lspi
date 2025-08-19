@@ -24,10 +24,11 @@ class Image(rendering.Geom):
 class PuddleEnv(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self, start=[0.2, 0.4], goal=[1.0, 1.0], goal_threshold=0.1,
-            noise=0.025, thrust=0.05, puddle_center=[[.3, .6], [.4, .5], [.8, .9]],
+    def __init__(self, start=[0.2, 0.4],
+                  goal=[0.8, 0.8], goal_threshold=0.1,
+            noise=0.02, thrust=0.05, puddle_center=[[.3, .6], [.4, .5], [.8, .9]],
             puddle_width=[[.1, .05], [.04, .1], [.08, .12]], max_episode_steps=500, punish_bound = True):
-        self.start = np.array(start)
+        self.start = np.array(start) if start is not None else None
         self.goal = np.array(goal)
         self.goal_threshold = goal_threshold
         self.noise = noise
@@ -57,6 +58,7 @@ class PuddleEnv(gym.Env):
                     bound = bound[:, ::-1]
                 self.puddle_center += bound.tolist()
             self.puddle_width += [[0.08, 0.08] for _ in range(n_bound_pts*4)]
+        self.reset()
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -83,8 +85,11 @@ class PuddleEnv(gym.Env):
             reward -= 2. * self._gaussian1d(pos[0], cen[0], wid[0]) * \
                 self._gaussian1d(pos[1], cen[1], wid[1])
 
-        reward += 60. * self._gaussian1d(pos[0], self.goal[0], self.goal_threshold * 3) * \
-                self._gaussian1d(pos[1], self.goal[1], self.goal_threshold * 3)
+        # reward -= 30. * np.linalg.norm(pos - self.goal, ord=1)  # distance to goal
+        reward += 40. * self._gaussian1d(pos[0], self.goal[0], self.goal_threshold * 3) * \
+                  self._gaussian1d(pos[1], self.goal[1], self.goal_threshold*3)
+        if np.linalg.norm(pos - self.goal, ord=1) < self.goal_threshold:
+            reward += 50.  # bonus for reaching the goal
 
         return reward
 

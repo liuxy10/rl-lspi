@@ -116,3 +116,7 @@ dmypy.json
 # additional
 .DS_Store
 .vscode/
+*.zip
+*.ipynb
+
+

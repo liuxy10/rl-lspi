@@ -1,7 +1,7 @@
 from collections import namedtuple
 
 import numpy as np
-from tqdm import trange
+from tqdm import tqdm
 
 Sample = namedtuple('Sample', ['s', 'a', 'r', 's_', 'done'])
 
@@ -42,6 +42,7 @@ class LSPolicyIteration:
         """Initialize the memory with random samples (if policy is None) or update memory or episodes."""
         if agent is None:
             self.memory = []
+        obs = self.env.reset()
         count = 0 # count of collected samples
         done, done_idx = True, []
         limit = (self.memory_size + 1) if agent is None else update_size
@@ -60,7 +61,7 @@ class LSPolicyIteration:
                 count += 1
                 # print("percentage done = {:.2f}%".format(count / (self.memory_size + 1) * 100)) if agent is None else print("sample update done = {:.2f}%".format(count / update_size * 100))
         # only keep latest memory size
-        print("memory size before trimming = {}".format(len(self.memory)), "done index", done_idx)
+        # print("memory size before trimming = {}".format(len(self.memory)), "done index", done_idx)
         self.memory = self.memory[-self.memory_size:] if self.memory_type == 'sample' else self.memory[ -done_idx[0]:]
 
         if self.eval_type == 'batch':
@@ -73,9 +74,9 @@ class LSPolicyIteration:
                 # state features
                 feat_s = np.zeros(k * nActions)
                 a = sample.a
-                feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s)
+                feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s,sample.a)
                 # next state features
-                feat_ = self.agent.get_features(sample.s_)
+                feat_ = self.agent.get_features(sample.s_, self.agent.predict(sample.s_))
                 for a_ in range(nActions):
                     feat_s_ = np.zeros(k * nActions)
                     feat_s_[a_ * k:(a_ + 1) * k] = feat_
@@ -88,22 +89,45 @@ class LSPolicyIteration:
         k = self.agent.features_size
         nActions = self.agent.action_size
         if self.eval_type == 'iterative':
-            A = np.zeros((k * nActions, k * nActions))
-            b = np.zeros(k * nActions)
-            for sample in self.memory:
-                # state features
-                feat_s = np.zeros(k * nActions)
-                a = sample.a
-                feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s)
-                # next state features
-                feat_s_ = np.zeros(k * nActions)
-                a_ = self.agent.predict(sample.s_)
-                feat_s_[a_ * k:(a_ + 1) * k] = self.agent.get_features(
-                    sample.s_)
-                # update parameters
-                A += np.outer(feat_s, feat_s - self.gamma * feat_s_)
-                b += sample.r * feat_s
-            w = np.linalg.solve(A, b)
+            if self.agent.__class__.__name__ == "QuadraticAgent":
+                print("testing Quadratic Agent")
+                A = np.zeros((k,k))
+                b = np.zeros((k,1))
+                for sample in tqdm(self.memory, desc="LSTDQ"):
+                    # state features
+                    feat_s = self.agent.get_features(sample.s, sample.a).reshape(-1,1)
+                    # next state features
+                    a_ = self.agent.predict(sample.s_)
+                    feat_s_ = self.agent.get_features(sample.s_, a_).reshape(-1,1)
+                    # update parameters
+                    A += np.outer(feat_s, feat_s - self.gamma * feat_s_)
+                    b += sample.r * feat_s
+                w = np.linalg.solve(A, b).reshape(-1) if np.linalg.det(A) != 0 else np.linalg.pinv(A).dot(b).reshape(-1)
+            
+                # make sure the solution is positive definite by setting negative eigenvalues to negative
+                S = -self.agent.convertW2S(w)
+                D, V = np.linalg.eigh(S)
+                D = np.maximum(D, 1e-3)
+                S = V @ np.diag(D) @ V.T
+                w = -self.agent.convertS2W(S)
+
+            else:
+                A = np.zeros((k * nActions, k * nActions))
+                b = np.zeros(k * nActions)
+                for sample in self.memory:
+                    # state features
+                    feat_s = np.zeros(k * nActions)
+                    a = sample.a
+                    feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s,a)
+                    # next state features
+                    feat_s_ = np.zeros(k * nActions)
+                    a_ = self.agent.predict(sample.s_)
+                    feat_s_[a_ * k:(a_ + 1) * k] = self.agent.get_features(
+                        sample.s_, a_)
+                    # update parameters
+                    A += np.outer(feat_s, feat_s - self.gamma * feat_s_)
+                    b += sample.r * feat_s
+                    w = np.linalg.solve(A, b)
         elif self.eval_type == 'sherman_morrison':
             B = np.eye(k * nActions)
             b = np.zeros(k * nActions)
@@ -111,12 +135,12 @@ class LSPolicyIteration:
                 # state features
                 feat_s = np.zeros(k * nActions)
                 a = sample.a
-                feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s)
+                feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s, a)
                 # next state features
                 feat_s_ = np.zeros(k * nActions)
                 a_ = self.agent.predict(sample.s_)
                 feat_s_[a_ * k:(a_ + 1) * k] = self.agent.get_features(
-                    sample.s_)
+                    sample.s_, a_)
                 # update matrix
                 B -= np.outer(np.dot(
                     B, feat_s), np.dot(

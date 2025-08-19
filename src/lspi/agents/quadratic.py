@@ -1,0 +1,80 @@
+
+from qpsolvers import solve_qp
+import numpy as np
+from lspi.agents.agent import Agent
+
+class QuadraticAgent(Agent):
+    """
+    Quadratic Agent: 
+    features: upper triangular matrix of the outer product of state and action
+    action: gym.box
+    """
+    def __init__(self, env, w=None, preprocess_obs=lambda x: x):
+        obs = env.observation_space.sample()
+        act = env.action_space.sample()
+        self.n = len(obs) + len(act)
+        self.features_size = self.n * (self.n + 1) // 2 
+        if w is not None:
+            assert w.shape[0] == self.features_size, \
+                "w should have shape ({},), got {}".format(self.features_size, w.shape)
+            self.set_weights(w)
+        else:
+            self.init_weights()
+        super(QuadraticAgent, self).__init__(env, preprocess_obs)
+        
+    def init_weights(self, scale=1.):
+        S = np.diag(np.random.random( size=self.n))
+        self.weights = - self.convertS2W(S)
+        assert len(self.weights) == self.features_size, "weights should have shape ({},), got {}".format(self.features_size, self.weights.shape)
+
+    def get_features_size(self):
+        obs = self.env.observation_space.sample()
+        act = self.env.action_space.sample()
+        features = self.get_features(obs, act)
+        return len(features)
+
+
+    def _get_features(self, obs, action):
+        sa = np.concatenate((obs, action))
+        phi = np.outer(sa, sa)[np.triu_indices(self.n)]
+        assert len(phi) == self.features_size
+        return phi
+
+    def get_q_gradient(self, obs, action):
+        obs = self.preprocess_obs(obs)
+        return self._get_q_gradient(obs, action)
+
+    def _get_q_gradient(self, obs, action): 
+        """ q func gradient w.r.t each action analytical soln """
+        out = np.zeros(self.n)
+        ## TODO
+        pass
+
+    def predict(self, obs, eps=0):
+        H = -self.convertW2S(self.weights)
+        R = H[len(obs):, len(obs):]
+        Hax = H[:len(obs), len(obs):]
+        obs = self.preprocess_obs(obs)
+        ub = self.env.action_space.high
+        # efficiently solve the Quadratic program argmin_a 0 + a^T R a + 2 * a^T Hax x using
+        action = solve_qp(R, Hax.T @ obs,
+                 None, None, # no inequality constraints
+                 None, None, # no equality constraints
+                lb = -ub, ub = ub,
+                solver='osqp')
+
+        return action
+
+    def convertW2S(self, w):
+        """Convert weight vector to a symmetric matrix."""
+        Phat = np.zeros((self.n, self.n))
+        Phat[np.triu_indices(self.n)] = w
+        S = (Phat + Phat.T)
+        S[np.diag_indices(self.n)] /= 2 # ensure diagonal is not added twice
+        return S
+
+    def convertS2W(self, S):
+        """Convert symmetric matrix to weight vector."""
+        assert S.shape == (self.n, self.n)
+        w = S[np.triu_indices(self.n)]
+        return w

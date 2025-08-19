@@ -15,6 +15,13 @@ class RadialAgent(Agent):
         rbfs = np.exp(-dists.sum(1) / (2 * self.sigma2))
         return np.append(rbfs, [1.])
 
+    def get_q_values(self, obs): # discrete only 
+        return np.dot(
+            self.weights.reshape(self.action_size, self.features_size),
+            self.get_features(obs)).copy()
+    
     @staticmethod
     def get_centers_from_grids(grids):
         return np.array(list(itertools.product(*grids)))
+    
+
