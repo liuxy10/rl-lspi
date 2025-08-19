@@ -59,7 +59,7 @@ class InvertedPendulumEnv(gym.Env):
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
         # define action space
-        self.action_map = f * np.linspace(-1., 1., nA)
+        self.actions = f * np.linspace(-1., 1., nA)
         self.action_space = spaces.Discrete(nA)
 
         self.seed()
@@ -73,7 +73,7 @@ class InvertedPendulumEnv(gym.Env):
         th, thdot = self.state
 
         # get control
-        u = self.action_map[action]
+        u = self.actions[action]
         u += self.f_noise * np.random.uniform(-1, 1)
 
         # get acceleration
@@ -91,7 +91,7 @@ class InvertedPendulumEnv(gym.Env):
 
         # check if horizontal
         terminal = np.abs(th - 0.00001) >= (np.pi / 2)
-        reward = -float(terminal)
+        reward = self.get_reward(self.state)
 
         return self._get_obs(), reward, terminal, {}
 
@@ -104,3 +104,8 @@ class InvertedPendulumEnv(gym.Env):
     def _get_obs(self):
         th, thdot = self.state
         return np.array([th, thdot])
+    
+    def get_reward(self, state):
+        th, thdot = state
+        terminal = np.abs(th - 0.00001) >= (np.pi / 2)
+        return -float(terminal)
