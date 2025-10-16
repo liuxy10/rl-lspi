@@ -7,25 +7,12 @@ from gym.envs.classic_control import rendering
 from gym_puddle.shapes.image import Image
 import pyglet
 import gym
-
 from gym.envs.classic_control import rendering
 
-class Image(rendering.Geom):
-    def __init__(self, img, width, height):
-        rendering.Geom.__init__(self)
-        self.width = width
-        self.height = height
-        self.img = img
-        self.flip = False
-    def render1(self):
-        self.img.blit(0, 0, width=self.width, height=self.height)
-
-
-
-class PuddleEnv(gym.Env):
+class PuddleContinuousEnv(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self, start=[0.2, 0.4],
+    def __init__(self, start=[0.7, 0.4],
                   goal=[0.8, 0.8], goal_threshold=0.1,
             noise=0.02, thrust=0.05, puddle_center=[
                 # [.3, .6], 
@@ -45,12 +32,12 @@ class PuddleEnv(gym.Env):
         self.puddle_center = [np.array(center) for center in puddle_center]
         self.puddle_width = [np.array(width) for width in puddle_width]
 
-        self.action_space = spaces.Discrete(5)
-        self.observation_space = spaces.Box(0.0, 1.0, shape=(2,))
+        self.action_space = spaces.Box(low=np.array([-1, -1]) * thrust, high=np.array([1, 1]) * thrust, dtype=np.float32)
+        self.observation_space = spaces.Box(low=np.array([0.4,0.0]), high=np.array([0.75, 1.0]), dtype=np.float32)
 
-        self.actions = [np.zeros(2) for i in range(5)]
-        for i in range(4):
-            self.actions[i][i//2] = thrust * (i%2 * 2 - 1)
+        # self.actions = [np.zeros(2) for i in range(5)]
+        # for i in range(4):
+        #     self.actions[i][i//2] = thrust * (i%2 * 2 - 1)
 
         self.seed()
         self.counter = 0
@@ -59,14 +46,23 @@ class PuddleEnv(gym.Env):
         self.max_episode_steps = max_episode_steps
         self.punish_bound = punish_bound 
         if punish_bound:
+            low = self.observation_space.low
+            high = self.observation_space.high
             n_bound_pts = 8
-            for i in range(4):
-                xy, start = i % 2, i // 2
-                bound = np.array([np.linspace(0, 1, n_bound_pts), np.ones(n_bound_pts) * start]).T
-                if xy == 1:# if xy = 1, flip two columns
-                    bound = bound[:, ::-1]
-                self.puddle_center += bound.tolist()
-            self.puddle_width += [[0.08, 0.08] for _ in range(n_bound_pts*4)]
+            # bottom edge
+            bound = np.array([np.linspace(low[0], high[0], n_bound_pts), np.ones(n_bound_pts) * low[1]]).T
+            self.puddle_center += bound.tolist()
+            # top edge
+            bound = np.array([np.linspace(low[0], high[0], n_bound_pts), np.ones(n_bound_pts) * high[1]]).T
+            self.puddle_center += bound.tolist()
+            # left edge
+            bound = np.array([np.ones(n_bound_pts) * low[0], np.linspace(low[1], high[1], n_bound_pts)]).T
+            self.puddle_center += bound.tolist()
+            # right edge
+            bound = np.array([np.ones(n_bound_pts) * high[0], np.linspace(low[1], high[1], n_bound_pts)]).T
+            self.puddle_center += bound.tolist()
+
+            self.puddle_width += [[0.08 * (high[0] - low[0]), 0.08 * (high[1] - low[1])] for _ in range(n_bound_pts*4)]
         self.reset()
 
 
@@ -75,10 +71,10 @@ class PuddleEnv(gym.Env):
         return [seed]
 
     def step(self, action):
-        assert self.action_space.contains(action), "%r (%s) invalid"%(action, type(action))
+        action = np.clip(action, self.action_space.low, self.action_space.high)
 
-        self.pos += self.actions[action] + self.np_random.uniform(low=-self.noise, high=self.noise, size=(2,))
-        self.pos = np.clip(self.pos, 0.0, 1.0)
+        self.pos += action + self.np_random.uniform(low=-self.noise, high=self.noise, size=(2,))
+        self.pos = np.clip(self.pos, self.observation_space.low, self.observation_space.high)
         
         reward = self.get_reward(self.pos)
         self.counter += 1
@@ -92,7 +88,7 @@ class PuddleEnv(gym.Env):
     def get_reward(self, pos):
         reward = -1.
         for cen, wid in zip(self.puddle_center, self.puddle_width):
-            reward -= 2. * self._gaussian1d(pos[0], cen[0], wid[0]) * \
+            reward -= 5. * self._gaussian1d(pos[0], cen[0], wid[0]) * \
                 self._gaussian1d(pos[1], cen[1], wid[1])
 
         # reward -= 30. * np.linalg.norm(pos - self.goal, ord=1)  # distance to goal
@@ -193,3 +189,50 @@ class PuddleEnv(gym.Env):
         self.viewer.render(return_rgb_array = mode=='rgb_array')
         label.draw()          
 
+
+
+class Simulate(PuddleContinuousEnv):
+    # what is different is that we define the map from our data, not from gaussian1ds. 
+    def __init__(self, start=None, # TODO: can only support 2d param space now
+                  goal=None, 
+                  goal_threshold=0.1,
+                  noise_a=0.02,
+                  noise_f=0.0,
+                  thrust=0.08,
+                  feature_map=None,
+                  reward_map=None, max_episode_steps = 100):
+        super().__init__(start=start, goal=goal, goal_threshold=goal_threshold,
+                         noise=noise_a, thrust=thrust, max_episode_steps=max_episode_steps)
+        self._feature_map = feature_map
+        self._reward_map = reward_map
+        self.noise_f = noise_f
+        self.f = np.zeros(self._feature_map.n_features)  # feature vector
+        assert self._feature_map.n_features == len(self.goal), "Feature map and goal must have the same number of features"
+
+    def step(self, action):
+        # Apply the feature map to the action
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+
+        self.pos += action + self.np_random.uniform(low=-self.noise, high=self.noise, size=(2,))
+        self.pos = np.clip(self.pos, 0.0, 1.0)
+        reward = None
+        # map the pos to feature space
+        if self._feature_map is not None:
+            self.f = self._feature_map(self.pos) + self.np_random.uniform(low=-self.noise_f, high=self.noise_f, size=(self._feature_map.n_features,))
+        if self._reward_map is not None:
+            reward = self.get_reward(self.pos, action)
+        self.counter += 1
+        done = self.counter >= self.max_episode_steps
+        # update history
+        self.his_obs.append(copy.copy(self.pos))
+        self.his_obs = self.his_obs[-self.max_episode_steps//5:] # just for vis
+        return self.pos, reward, done, {'feature': self.f, 'history': self.his_obs}
+
+    def get_reward(self, state, action = None, goal = None):
+        reward = -1.
+        for cen, wid in zip(self.puddle_center, self.puddle_width):
+            reward -= 2. * self._gaussian1d(state[0], cen[0], wid[0]) * \
+                self._gaussian1d(state[1], cen[1], wid[1])
+        f = self._feature_map(state)
+        goal = self.goal if goal is None else goal
+        return self._reward_map(f, action, goal) if self._reward_map is not None else None

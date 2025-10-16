@@ -41,4 +41,3 @@ class Agent:
             action = np.random.randint(self.action_size)
         return action
 
-

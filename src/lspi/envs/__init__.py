@@ -2,6 +2,7 @@ from lspi.envs.chain_walk import ChainWalkEnv
 from lspi.envs.inv_pendulum import InvertedPendulumEnv
 from lspi.envs.bound_linear import SimulatorEnv
 from lspi.envs.puddle_env import PuddleEnv
+from lspi.envs.cont_MountainCar import Continuous_MountainCarEnv
 
 from gym.envs.registration import register
 
@@ -27,4 +28,10 @@ register(
     id='LSPI-Puddle-v0',
     entry_point='lspi.envs:PuddleEnv',
     max_episode_steps=500
+)
+
+register(
+    id='LSPI-Continuous-MountainCar-v0',
+    entry_point='lspi.envs:Continuous_MountainCarEnv',
+    max_episode_steps=1000
 )

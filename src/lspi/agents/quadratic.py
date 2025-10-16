@@ -10,9 +10,9 @@ class QuadraticAgent(Agent):
     action: gym.box
     """
     def __init__(self, env, w=None, preprocess_obs=lambda x: x):
-        obs = env.observation_space.sample()
-        act = env.action_space.sample()
-        self.n = len(obs) + len(act)
+        obs_len = len(env.observation_space.sample())
+        act_len = len(env.action_space.sample()) if type(env.action_space.sample()) is np.ndarray else 1
+        self.n = obs_len + act_len
         self.features_size = self.n * (self.n + 1) // 2 
         if w is not None:
             assert w.shape[0] == self.features_size, \
@@ -78,3 +78,5 @@ class QuadraticAgent(Agent):
         assert S.shape == (self.n, self.n)
         w = S[np.triu_indices(self.n)]
         return w
+    
+

@@ -83,6 +83,7 @@ class Continuous_MountainCarEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=self.low_state, high=self.high_state, dtype=np.float32
         )
+        self.max_length = 200
 
         self.seed()
         self.reset()
@@ -111,7 +112,8 @@ class Continuous_MountainCarEnv(gym.Env):
             velocity = 0
 
         # Convert a possible numpy bool to a Python bool.
-        done = bool(position >= self.goal_position and velocity >= self.goal_velocity) 
+        done = bool(position >= self.goal_position and velocity >= self.goal_velocity) \
+               or self.t >= self.max_length
 
         reward = 0
         if done:
@@ -119,10 +121,12 @@ class Continuous_MountainCarEnv(gym.Env):
         reward -= math.pow(action[0], 2) * 0.1
 
         self.state = np.array([position, velocity], dtype=np.float32)
+        self.t += 1
         return self.state, reward, done, {}
 
     def reset(self):
-        self.state = np.array([self.np_random.uniform(low=-0.6, high=-0.4), 0])
+        self.t = 0
+        self.state = np.array([self.np_random.uniform(low=-0.6, high=-0.4), self.np_random.uniform(low=-0.03, high=0.03)])
         return np.array(self.state, dtype=np.float32)
 
     def _height(self, xs):
@@ -194,3 +198,11 @@ class Continuous_MountainCarEnv(gym.Env):
         if self.viewer:
             self.viewer.close()
             self.viewer = None
+
+    def get_reward(self, state, action):
+        position, velocity = state
+        reward = 0
+        if position >= self.goal_position and velocity >= self.goal_velocity:
+            reward = 100.0
+        reward -= math.pow(action[0], 2) * 0.1
+        return reward

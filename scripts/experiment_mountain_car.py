@@ -5,7 +5,7 @@ import os, sys
 import matplotlib.pyplot as plt
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gym
-from src.lspi.utils import vis_memory_visited_state, vis_best_action, vis_Q
+from src.lspi.utils import vis_memory_visited_state, vis_best_action, vis_Q, vis_best_action_cont
 import argparse
 
 # compare to PPO baseline
@@ -18,36 +18,12 @@ import numpy as np
 from lspi.envs.cont_MountainCar import Continuous_MountainCarEnv
 
 
-
-
-
-class CustomInitVelocityMountainCar(Continuous_MountainCarEnv):
-    def __init__(self, init_position=None, init_velocity=0., ):
-
-        self.init_position = init_position
-        self.init_velocity = init_velocity
-        super().__init__()
-
-    def reset(self, **kwargs):
-        obs = super().reset(**kwargs)
-        # Override position and velocity at reset
-        if self.init_position is not None:
-            pos =  self.init_position
-        else:
-            pos = obs[0]
-        vel = self.init_velocity
-
-        self.state = np.array([pos, vel], dtype=np.float32)
-        return np.array(self.state, dtype=np.float32)
-    
-    def step(self, action):
-        obs, reward, done, info = super().step(action)
-        dense_reward = -abs(self.goal_position - obs[0]) * 60
-        reward += dense_reward
-        # print("Reward dense = {}".format(dense_reward))
-        
-        return obs, reward, done, info
-
+from gym.envs.registration import register
+register(
+    id='LSPI-Continuous-MountainCar-v0',
+    entry_point='lspi.envs:Continuous_MountainCarEnv',
+    max_episode_steps=400,
+)
 
 
 ## sys args
@@ -55,8 +31,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--agent', type=str, default='QuadraticAgent') #QuadraticAgent
     parser.add_argument('--n_iter', type=int, default=3)
-    parser.add_argument('--memory_size', type=int, default=20000)
-    parser.add_argument('--update_size', type=int, default=20000)
+    parser.add_argument('--memory_size', type=int, default=2000)
+    parser.add_argument('--update_size', type=int, default=2000)
     return parser.parse_args()
 
 args = parse_args()
@@ -66,14 +42,15 @@ args = parse_args()
 if args.agent == 'PPO':
     # env = make_vec_env("MountainCarContinuous-v0", n_envs=1)
     def make_wrapper_env():
-        env = CustomInitVelocityMountainCar(init_velocity=0.03)
+        # env = CustomInitVelocityMountainCar(init_velocity=0.03)
+        env = Continuous_MountainCarEnv()
         env.reset()
         return env
     
     
 
     env = DummyVecEnv([make_wrapper_env])
-    model = PPO("MlpPolicy", env, verbose=0, n_steps= 1024, learning_rate=3e-4, batch_size=32, n_epochs=10)
+    model = PPO("MlpPolicy", env, verbose=1, n_steps= 1024, learning_rate=3e-4, batch_size=32, n_epochs=10)
 
     mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=10)
     print(f"Init Mean reward: {mean_reward} +/- {std_reward}")
@@ -99,9 +76,9 @@ elif args.agent == 'QuadraticAgent':
 
 
     
-    env = CustomInitVelocityMountainCar(init_velocity=0.03)
+    env = Continuous_MountainCarEnv()
 
-    agent = lspi.agents.QuadraticAgent(env)
+    agent = lspi.agents.QuadraticAgent(env, preprocess_obs=lambda x: x-0.45)
     observation = env.reset() 
 
     # build the trainer
@@ -116,6 +93,7 @@ elif args.agent == 'QuadraticAgent':
     baseline.init_memory()
     print('memory size = {}'.format(len(baseline.memory)))
     vis_memory_visited_state(baseline)
+    vis_best_action_cont(baseline)
     # vis_Q(baseline)
 
     # run the algorithm
@@ -137,7 +115,7 @@ elif args.agent == 'QuadraticAgent':
             baseline.train_step()
             print("w diff = ", np.linalg.norm(baseline.agent.weights - w))
             w = baseline.agent.weights.copy()
-            # vis_best_action(baseline)
+            # vis_best_action_cont(baseline)
             rew, std, steps = score(agent)
             all_rewards[rep, it] = rew
             # env.render() # Optional: rendering can slow down the process
@@ -145,10 +123,9 @@ elif args.agent == 'QuadraticAgent':
                 format(it, rew, std))
 
 
-        # vis_best_action(baseline)
+        vis_best_action_cont(baseline)
         baseline.init_memory(agent=agent, update_size=10)  # Re-initialize memory for the next repetition
         vis_memory_visited_state(baseline)
-        vis_best_action(baseline)
         print("mean of memory:", np.mean([sample.r for sample in baseline.memory], axis=0))
 
 

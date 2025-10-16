@@ -29,33 +29,36 @@ env = gym.make('LSPI-Puddle-v0', start = None)
 # build the agent
 grids = [[0.,0.25, 0.5,0.25, 1.], [0.,0.25, 0.5,0.25, 1.]]
 centers = lspi.agents.RadialAgent.get_centers_from_grids(grids)
-sigma = .2
+sigma = .23
 agent = lspi.agents.RadialAgent(env, centers, sigma)
 
 # build the trainer
 gamma = 0.95
 memory_size = 5
+update_size = 1
 memory_type = 'episode'
 eval_type = 'sherman_morrison' # 'iterative' # 'batch'
 
 
 # run the algorithm for multiple times
-n_iter = 6
-n_reps = 3
+n_iter = 5
+n_reps = 6
+use_prev_rep = True
 all_rewards = np.zeros((n_reps, n_iter + 1))
 
 for rep in range(n_reps):
     print(f"--- Repetition {rep + 1}/{n_reps} ---")
     # Re-initialize agent and baseline for a fresh start
-    agent = lspi.agents.RadialAgent(env, centers, sigma)
-    baseline = lspi.baselines.LSPolicyIteration(env, agent, gamma, memory_size,
-                                                memory_type, eval_type)
-    baseline.init_memory()
-    print("mean of memory (random policy):", np.mean([sample.r for sample in baseline.memory], axis=0))
+    if not use_prev_rep or rep == 0:
+        agent = lspi.agents.RadialAgent(env, centers, sigma)
+        baseline = lspi.baselines.LSPolicyIteration(env, agent, gamma, memory_size,
+                                                    memory_type, eval_type)
+        baseline.init_memory()
+        print("mean of memory (random policy):", np.mean([sample.r for sample in baseline.memory], axis=0))
 
-    # Visualize the visited states in memory
-    vis_memory_visited_state(baseline)
-    vis_best_action(baseline)
+        # Visualize the visited states in memory
+        vis_memory_visited_state(baseline)
+        vis_best_action(baseline)
 
     rew, std, steps = score(agent)
     all_rewards[rep, 0] = rew
@@ -67,27 +70,36 @@ for rep in range(n_reps):
         baseline.train_step()
         print("w diff = ", np.linalg.norm(baseline.agent.weights - w))
         w = baseline.agent.weights.copy()
-        vis_best_action(baseline)
+        # vis_best_action(baseline)
         rew, std, steps = score(agent)
         all_rewards[rep, it] = rew
         # env.render() # Optional: rendering can slow down the process
         print('iteration = {:02d} - average reward : {:.2f} +- {:.2f} '.
               format(it, rew, std))
 
-
     vis_best_action(baseline)
-    baseline.init_memory(agent=agent, update_size=10)  # Re-initialize memory for the next repetition
+
+    
+    baseline.init_memory(agent=agent, update_size=update_size)  # Re-initialize memory for the next repetition
     vis_memory_visited_state(baseline)
     print("mean of memory:", np.mean([sample.r for sample in baseline.memory], axis=0))
+    
+    if use_prev_rep:
+        continue
     # delete cache and variables in this run
     del baseline
     del agent
     # del env
 
 # Calculate mean and standard deviation across repetitions
-mean_rewards = np.mean(all_rewards, axis=0)
-std_rewards = np.std(all_rewards, axis=0)
-iterations = np.arange(n_iter + 1)
+if use_prev_rep: # concatenate reward traj other than taking mean
+    mean_rewards = np.concatenate(all_rewards)  
+    std_rewards = np.zeros_like(mean_rewards)  # No std if using previous repetition
+    iterations = np.arange(mean_rewards.shape[0])  # Same number of iterations as in
+else:
+    mean_rewards = np.mean(all_rewards, axis=0)
+    std_rewards = np.std(all_rewards, axis=0)
+    iterations = np.arange(n_iter + 1)
 
 # Plotting the results
 plt.figure(figsize=(10, 6))

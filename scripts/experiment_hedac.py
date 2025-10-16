@@ -371,8 +371,8 @@ param.local_cooling = 0  # for multi agent collision avoidance
 param.dx = 1
 
 param.nbVarX = 2  # dimension of the space
-param.nbResX = 50 # number of grid cells in x direction
-param.nbResY = 50  # number of grid cells in y direction
+param.nbResX = 100 # number of grid cells in x direction
+param.nbResY = 100 # number of grid cells in y direction
 
 param.nbGaussian = 2#2
 
@@ -405,7 +405,7 @@ register(
     entry_point='lspi.envs:PuddleEnv',
     max_episode_steps=400,
 )
-env = gym.make('LSPI-Puddle-v0', start = None)
+env = gym.make('LSPI-Puddle-v0')
 
 
 G = np.zeros((param.nbResX, param.nbResY))

@@ -85,6 +85,9 @@ class LSPolicyIteration:
                 # reward features
                 self.b_all += sample.r * feat_s
 
+    def load_memory(self, memory):
+        self.memory = memory
+
     def eval(self):
         k = self.agent.features_size
         nActions = self.agent.action_size
@@ -102,14 +105,32 @@ class LSPolicyIteration:
                     # update parameters
                     A += np.outer(feat_s, feat_s - self.gamma * feat_s_)
                     b += sample.r * feat_s
-                w = np.linalg.solve(A, b).reshape(-1) if np.linalg.det(A) != 0 else np.linalg.pinv(A).dot(b).reshape(-1)
-            
-                # make sure the solution is positive definite by setting negative eigenvalues to negative
-                S = -self.agent.convertW2S(w)
-                D, V = np.linalg.eigh(S)
-                D = np.maximum(D, 1e-3)
-                S = V @ np.diag(D) @ V.T
-                w = -self.agent.convertS2W(S)
+
+                ap = True # use alternative projection
+                if not ap:
+                    w = np.linalg.solve(A, b).reshape(-1) if np.linalg.det(A) != 0 else np.linalg.pinv(A).dot(b).reshape(-1)
+                    # make sure the solution is positive definite by setting negative eigenvalues to negative
+                    S = -self.agent.convertW2S(w)
+                    D, V = np.linalg.eigh(S)
+                    D = np.maximum(D, 1e-3)
+                    S = V @ np.diag(D) @ V.T
+                    w = -self.agent.convertS2W(S)
+                else:
+                    j=1
+                    error=1
+                    stepsize=0.5 * 0.5
+                    phiw=np.zeros((k,1))
+                    Cphi=A/len(sample)
+                    dphi=b/len(sample)
+                    while j<=1000 and error>1e-4:
+                        oPhiw=phiw.copy()
+                        residuePhi=phiw-stepsize*(Cphi@phiw-dphi) 
+                        phiw=proDysktra(self.agent, residuePhi,100,1e-4)
+                        j=j+1
+                        error=np.linalg.norm(oPhiw-phiw)
+                        stepsize=1/(j+1)
+                    w=phiw.reshape(-1) 
+                    
 
             else:
                 A = np.zeros((k * nActions, k * nActions))
@@ -129,25 +150,29 @@ class LSPolicyIteration:
                     b += sample.r * feat_s
                     w = np.linalg.solve(A, b)
         elif self.eval_type == 'sherman_morrison':
-            B = np.eye(k * nActions)
-            b = np.zeros(k * nActions)
-            for sample in self.memory:
-                # state features
-                feat_s = np.zeros(k * nActions)
-                a = sample.a
-                feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s, a)
-                # next state features
-                feat_s_ = np.zeros(k * nActions)
-                a_ = self.agent.predict(sample.s_)
-                feat_s_[a_ * k:(a_ + 1) * k] = self.agent.get_features(
-                    sample.s_, a_)
-                # update matrix
-                B -= np.outer(np.dot(
-                    B, feat_s), np.dot(
-                        B.T, feat_s - self.gamma * feat_s_)) / (1 + np.inner(
-                            feat_s - self.gamma * feat_s_, np.dot(B, feat_s)))
-                b += sample.r * feat_s
-            w = np.dot(B, b)
+            if self.agent.__class__.__name__ == "QuadraticAgent":
+                raise NotImplementedError("Sherman-Morrison not implemented for Quadratic Agent yet")
+                
+            else: 
+                B = np.eye(k * nActions)
+                b = np.zeros(k * nActions)
+                for sample in self.memory:
+                    # state features
+                    feat_s = np.zeros(k * nActions)
+                    a = sample.a
+                    feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s, a)
+                    # next state features
+                    feat_s_ = np.zeros(k * nActions)
+                    a_ = self.agent.predict(sample.s_)
+                    feat_s_[a_ * k:(a_ + 1) * k] = self.agent.get_features(
+                        sample.s_, a_)
+                    # update matrix
+                    B -= np.outer(np.dot(
+                        B, feat_s), np.dot(
+                            B.T, feat_s - self.gamma * feat_s_)) / (1 + np.inner(
+                                feat_s - self.gamma * feat_s_, np.dot(B, feat_s)))
+                    b += sample.r * feat_s
+                w = np.dot(B, b)
         elif self.eval_type == 'batch':
             A = np.array([
                 self.A_all[idx, self.agent.predict(sample.s_)]
@@ -160,4 +185,38 @@ class LSPolicyIteration:
     def train_step(self):
         w = self.eval()
         self.agent.set_weights(w)
+
+# alternating projection
+def proDysktra(agent,x0,ballR,errTol):
+    """Projection onto the set of symmetric matrices."""    
+
+    error=1
+    j=1
+    I= np.zeros((len(x0),2)) # intermediate projections
+    oldI=np.zeros((len(x0),2)) 
+    x=x0.reshape((-1,))
+    while j<500 and error>errTol: 
+        
+        oldX=x.copy()
+        if np.linalg.norm(x-I[:,0])>ballR:
+            x=ballR*(x-I[:,0])/np.linalg.norm(x-I[:,0])                    
+        else:
+            x=x-I[:,0]               
+        oldI[:,0]=I[:,0].copy()
+        I[:,0]=x-(oldX-I[:,0])
+        
+        oldX=x.copy()
+        s=-agent.convertW2S(x-I[:,1])
+        D, V = np.linalg.eigh(s)  # D is diagonal matrix, V is orthogonal
+        D[D< 0]=0    # set negative eigenvalues to zero                          
+        s=V@np.diag(D)@V.T
+        x=-agent.convertS2W(s) # x is the new point
+        oldI[:,1]=I[:,1].copy()
+        I[:,1]=x-(oldX-I[:,1])  
+                        
+        j=j+1
+        error=np.linalg.norm(oldI-I)**2                
+            
+    return x.reshape(-1,1)  # return the projection of x0 onto the set of symmetric matrices
+
         
