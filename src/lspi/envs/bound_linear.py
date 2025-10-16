@@ -44,7 +44,7 @@ class SimulatorEnv(gym.Env):
 
         
         # define action space
-        self.action_map = np.array([0.5 * np.linspace(-1., 1., 3) for _ in range(self.n_action)]).T
+        self.actions = np.array([0.5 * np.linspace(-1., 1., 3) for _ in range(self.n_action)]).T
         self.action_space = spaces.MultiDiscrete([3] * self.n_action) if self.n_action > 1 else spaces.Discrete(3)  # 3 actions for each parameter
         # observation_space: parameters/outputs
         obs_low = np.full((self.n_state,), -3)
@@ -65,7 +65,7 @@ class SimulatorEnv(gym.Env):
     def step(self, action):
         # First order integrator: param_{t+1} = param_t + delta_action
         
-        u = np.array([self.action_map[a, i] for i, a in enumerate(action)]) if isinstance(action, (list, np.ndarray)) else self.action_map[action]
+        u = np.array([self.actions[a, i] for i, a in enumerate(action)]) if isinstance(action, (list, np.ndarray)) else self.actions[action]
         # u += 0.1 * np.random.uniform(-1, 1)
         # action = np.clip(action, self.action_space.low, self.action_space.high)
         delta = u / self.input_scale
