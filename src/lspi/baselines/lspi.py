@@ -65,25 +65,43 @@ class LSPolicyIteration:
         self.memory = self.memory[-self.memory_size:] if self.memory_type == 'sample' else self.memory[ -done_idx[0]:]
 
         if self.eval_type == 'batch':
-            k = self.agent.features_size
-            nActions = self.agent.action_size
-            self.A_all = np.zeros(
-                (len(self.memory), nActions, k * nActions, k * nActions))
-            self.b_all = np.zeros(k * nActions)
-            for idx, sample in enumerate(self.memory):
-                # state features
-                feat_s = np.zeros(k * nActions)
-                a = sample.a
-                feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s,sample.a)
-                # next state features
-                feat_ = self.agent.get_features(sample.s_, self.agent.predict(sample.s_))
-                for a_ in range(nActions):
-                    feat_s_ = np.zeros(k * nActions)
-                    feat_s_[a_ * k:(a_ + 1) * k] = feat_
-                    self.A_all[idx, a_, :, :] = np.outer(
+            if self.agent.__class__.__name__ == "QuadraticAgent":
+                # raise NotImplementedError("Batch method not implemented for Quadratic Agent yet")
+                k = self.agent.features_size
+                self.A_all = np.zeros((len(self.memory), k, k))
+                self.b_all = np.zeros(k)
+                for idx, sample in enumerate(self.memory):
+                    # state features
+                    feat_s = self.agent.get_features(sample.s, sample.a)
+                    # next state features
+                    feat_s_ = self.agent.get_features(sample.s_, self.agent.predict(sample.s_))
+                    self.A_all[idx, :, :] = np.outer(
                         feat_s, feat_s - self.gamma * feat_s_)
-                # reward features
-                self.b_all += sample.r * feat_s
+                    # reward features
+                    self.b_all += sample.r * feat_s
+                self.b_all = self.b_all.reshape(-1,1)
+                
+
+            else:
+                k = self.agent.features_size
+                nActions = self.agent.action_size
+                self.A_all = np.zeros(
+                    (len(self.memory), nActions, k * nActions, k * nActions))
+                self.b_all = np.zeros(k * nActions)
+                for idx, sample in enumerate(self.memory):
+                    # state features
+                    feat_s = np.zeros(k * nActions)
+                    a = sample.a
+                    feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s,sample.a)
+                    # next state features
+                    feat_ = self.agent.get_features(sample.s_, self.agent.predict(sample.s_))
+                    for a_ in range(nActions):
+                        feat_s_ = np.zeros(k * nActions)
+                        feat_s_[a_ * k:(a_ + 1) * k] = feat_
+                        self.A_all[idx, a_, :, :] = np.outer(
+                            feat_s, feat_s - self.gamma * feat_s_)
+                    # reward features
+                    self.b_all += sample.r * feat_s
 
     def load_memory(self, memory):
         self.memory = memory
@@ -106,31 +124,7 @@ class LSPolicyIteration:
                     A += np.outer(feat_s, feat_s - self.gamma * feat_s_)
                     b += sample.r * feat_s
 
-                ap = True # use alternative projection
-                if not ap:
-                    w = np.linalg.solve(A, b).reshape(-1) if np.linalg.det(A) != 0 else np.linalg.pinv(A).dot(b).reshape(-1)
-                    # make sure the solution is positive definite by setting negative eigenvalues to negative
-                    S = -self.agent.convertW2S(w)
-                    D, V = np.linalg.eigh(S)
-                    D = np.maximum(D, 1e-3)
-                    S = V @ np.diag(D) @ V.T
-                    w = -self.agent.convertS2W(S)
-                else:
-                    j=1
-                    error=1
-                    stepsize=0.5 * 0.5
-                    phiw=np.zeros((k,1))
-                    Cphi=A/len(sample)
-                    dphi=b/len(sample)
-                    while j<=1000 and error>1e-4:
-                        oPhiw=phiw.copy()
-                        residuePhi=phiw-stepsize*(Cphi@phiw-dphi) 
-                        phiw=proDysktra(self.agent, residuePhi,100,1e-4)
-                        j=j+1
-                        error=np.linalg.norm(oPhiw-phiw)
-                        stepsize=1/(j+1)
-                    w=phiw.reshape(-1) 
-                    
+                
 
             else:
                 A = np.zeros((k * nActions, k * nActions))
@@ -148,7 +142,7 @@ class LSPolicyIteration:
                     # update parameters
                     A += np.outer(feat_s, feat_s - self.gamma * feat_s_)
                     b += sample.r * feat_s
-                    w = np.linalg.solve(A, b)
+                    # w = np.linalg.solve(A, b)
         elif self.eval_type == 'sherman_morrison':
             if self.agent.__class__.__name__ == "QuadraticAgent":
                 raise NotImplementedError("Sherman-Morrison not implemented for Quadratic Agent yet")
@@ -174,12 +168,47 @@ class LSPolicyIteration:
                     b += sample.r * feat_s
                 w = np.dot(B, b)
         elif self.eval_type == 'batch':
-            A = np.array([
-                self.A_all[idx, self.agent.predict(sample.s_)]
-                for idx, sample in enumerate(self.memory)
-            ]).sum(0)
-            b = self.b_all
-            w = np.linalg.solve(A, b)
+            if self.agent.__class__.__name__ == "QuadraticAgent":
+                # raise NotImplementedError("Batch method not implemented for Quadratic Agent yet")
+                A = self.A_all.sum(0)
+                b = self.b_all
+                w = np.linalg.solve(A, b)
+            else:
+                A = np.array([
+                    self.A_all[idx, self.agent.predict(sample.s_)]
+                    for idx, sample in enumerate(self.memory)
+                ]).sum(0)
+                b = self.b_all
+                # w = np.linalg.solve(A, b)
+        
+        
+        ap = True # use alternative projection
+        if not ap:
+            w = np.linalg.solve(A, b).reshape(-1) if np.linalg.det(A) != 0 else np.linalg.pinv(A).dot(b).reshape(-1)
+            # make sure the solution is positive definite by setting negative eigenvalues to negative
+            S = -self.agent.convertW2S(w)
+            D, V = np.linalg.eigh(S)
+            D = np.maximum(D, 1e-3)
+            S = V @ np.diag(D) @ V.T
+            w = -self.agent.convertS2W(S)
+        else:
+            j=1
+            error=1
+            stepsize=0.5 * 0.5
+            nStates = len(self.memory[0].s)
+            phiw=np.zeros((k,1))
+            Cphi=A/nStates
+            dphi=b/nStates
+            while j<=1000 and error>1e-4:
+                oPhiw=phiw.copy()
+                residuePhi=phiw-stepsize*(Cphi@phiw-dphi) 
+                phiw=proDysktra(self.agent, residuePhi,100,1e-4)
+                j=j+1
+                error=np.linalg.norm(oPhiw-phiw)
+                stepsize=1/(j+1)
+            w=phiw.reshape(-1) 
+        
+        
         return w
 
     def train_step(self):
