@@ -2,7 +2,7 @@
 from qpsolvers import solve_qp
 import numpy as np
 from lspi.agents.agent import Agent
-
+import os
 class QuadraticAgent(Agent):
     """
     Quadratic Agent: 
@@ -14,13 +14,14 @@ class QuadraticAgent(Agent):
         act_len = len(env.action_space.sample()) if type(env.action_space.sample()) is np.ndarray else 1
         self.n = obs_len + act_len
         self.features_size = self.n * (self.n + 1) // 2 
+        
+        super(QuadraticAgent, self).__init__(env, preprocess_obs)
         if w is not None:
             assert w.shape[0] == self.features_size, \
                 "w should have shape ({},), got {}".format(self.features_size, w.shape)
             self.set_weights(w)
         else:
             self.init_weights()
-        super(QuadraticAgent, self).__init__(env, preprocess_obs)
         
     def init_weights(self, scale=1.):
         S = np.diag(np.random.random( size=self.n))
@@ -62,7 +63,7 @@ class QuadraticAgent(Agent):
                  None, None, # no equality constraints
                 lb = -ub, ub = ub,
                 solver='osqp')
-
+        # print(f"Predicted action: {action}")
         return action
 
     def convertW2S(self, w):
@@ -78,5 +79,15 @@ class QuadraticAgent(Agent):
         assert S.shape == (self.n, self.n)
         w = S[np.triu_indices(self.n)]
         return w
+    
+    def save(self, folder_path, name = "weights_online" ):
+         # save the weights
+        os.makedirs(os.path.join(folder_path, "weights"), exist_ok=True)
+        if ".npz" not in name:
+            name += ".npz"
+
+        print(f"Saving weights to {os.path.join(folder_path,'weights', name)}")
+        np.savez(os.path.join(folder_path,"weights", name ), weights=self.weights)
+
     
 

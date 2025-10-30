@@ -65,43 +65,44 @@ class LSPolicyIteration:
         self.memory = self.memory[-self.memory_size:] if self.memory_type == 'sample' else self.memory[ -done_idx[0]:]
 
         if self.eval_type == 'batch':
-            if self.agent.__class__.__name__ == "QuadraticAgent":
+            self._batch_prep()
+
+    def _batch_prep(self):
+        if self.agent.__class__.__name__ == "QuadraticAgent":
                 # raise NotImplementedError("Batch method not implemented for Quadratic Agent yet")
-                k = self.agent.features_size
-                self.A_all = np.zeros((len(self.memory), k, k))
-                self.b_all = np.zeros(k)
-                for idx, sample in enumerate(self.memory):
+            k = self.agent.features_size
+            self.A_all = np.zeros((len(self.memory), k, k))
+            self.b_all = np.zeros(k)
+            for idx, sample in enumerate(self.memory):
                     # state features
-                    feat_s = self.agent.get_features(sample.s, sample.a)
+                feat_s = self.agent.get_features(sample.s, sample.a)
                     # next state features
-                    feat_s_ = self.agent.get_features(sample.s_, self.agent.predict(sample.s_))
-                    self.A_all[idx, :, :] = np.outer(
+                feat_s_ = self.agent.get_features(sample.s_, self.agent.predict(sample.s_))
+                self.A_all[idx, :, :] = np.outer(
                         feat_s, feat_s - self.gamma * feat_s_)
                     # reward features
-                    self.b_all += sample.r * feat_s
-                self.b_all = self.b_all.reshape(-1,1)
-                
-
-            else:
-                k = self.agent.features_size
-                nActions = self.agent.action_size
-                self.A_all = np.zeros(
+                self.b_all += sample.r * feat_s
+            self.b_all = self.b_all.reshape(-1,1)
+        else:
+            k = self.agent.features_size
+            nActions = self.agent.action_size
+            self.A_all = np.zeros(
                     (len(self.memory), nActions, k * nActions, k * nActions))
-                self.b_all = np.zeros(k * nActions)
-                for idx, sample in enumerate(self.memory):
+            self.b_all = np.zeros(k * nActions)
+            for idx, sample in enumerate(self.memory):
                     # state features
-                    feat_s = np.zeros(k * nActions)
-                    a = sample.a
-                    feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s,sample.a)
+                feat_s = np.zeros(k * nActions)
+                a = sample.a
+                feat_s[a * k:(a + 1) * k] = self.agent.get_features(sample.s,sample.a)
                     # next state features
-                    feat_ = self.agent.get_features(sample.s_, self.agent.predict(sample.s_))
-                    for a_ in range(nActions):
-                        feat_s_ = np.zeros(k * nActions)
-                        feat_s_[a_ * k:(a_ + 1) * k] = feat_
-                        self.A_all[idx, a_, :, :] = np.outer(
+                feat_ = self.agent.get_features(sample.s_, self.agent.predict(sample.s_))
+                for a_ in range(nActions):
+                    feat_s_ = np.zeros(k * nActions)
+                    feat_s_[a_ * k:(a_ + 1) * k] = feat_
+                    self.A_all[idx, a_, :, :] = np.outer(
                             feat_s, feat_s - self.gamma * feat_s_)
                     # reward features
-                    self.b_all += sample.r * feat_s
+                self.b_all += sample.r * feat_s
 
     def load_memory(self, memory):
         self.memory = memory
@@ -111,7 +112,6 @@ class LSPolicyIteration:
         nActions = self.agent.action_size
         if self.eval_type == 'iterative':
             if self.agent.__class__.__name__ == "QuadraticAgent":
-                print("testing Quadratic Agent")
                 A = np.zeros((k,k))
                 b = np.zeros((k,1))
                 for sample in tqdm(self.memory, desc="LSTDQ"):
@@ -213,6 +213,7 @@ class LSPolicyIteration:
 
     def train_step(self):
         w = self.eval()
+        # print("Updated policy weights:", w)
         self.agent.set_weights(w)
 
 # alternating projection
