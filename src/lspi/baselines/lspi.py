@@ -1,6 +1,7 @@
 from collections import namedtuple
 
 import numpy as np
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 Sample = namedtuple('Sample', ['s', 'a', 'r', 's_', 'done'])
@@ -104,8 +105,34 @@ class LSPolicyIteration:
                     # reward features
                 self.b_all += sample.r * feat_s
 
-    def load_memory(self, memory):
+    def load_memory(self, memory, vis = False):
         self.memory = memory
+        if vis:
+            # print state (normalized), reward trajectory in 2 subplots
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+            visited_states, rewards, dones = [], [], []
+            for sample in memory:
+                visited_states.append(sample.s)
+                rewards.append(sample.r)
+                dones.append(sample.done)
+            ax1.plot(visited_states)
+            ax1.set_title("Visited States Over Time")
+            ax1.set_xlabel("Time Step")
+            ax1.set_ylabel("State Value")
+            ax2.plot(rewards)
+            ax2.hlines(0, 0, len(rewards), colors='r', linestyles='dashed')
+            ax2.set_title("Rewards Over Time")
+            ax2.set_xlabel("Time Step")
+
+
+            ax2.set_ylabel("Reward Value")
+            plt.tight_layout()
+            plt.show()
+
+            
+        
+
+ 
 
     def eval(self):
         k = self.agent.features_size
