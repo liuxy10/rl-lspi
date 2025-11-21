@@ -82,12 +82,12 @@ class QuadraticAgent(Agent):
     
     def save(self, folder_path, name = "weights_online" ):
          # save the weights
-        os.makedirs(os.path.join(folder_path, "weights"), exist_ok=True)
+        os.makedirs(folder_path, exist_ok=True)
         if ".npz" not in name:
             name += ".npz"
 
-        print(f"Saving weights to {os.path.join(folder_path,'weights', name)}")
-        np.savez(os.path.join(folder_path,"weights", name ), weights=self.weights)
+        print(f"Saving weights to {os.path.join(folder_path, name)}")
+        np.savez(os.path.join(folder_path, name ), weights=self.weights)
 
     
 
