@@ -3,6 +3,7 @@ from qpsolvers import solve_qp
 import numpy as np
 from lspi.agents.agent import Agent
 import os
+from scipy import sparse
 class QuadraticAgent(Agent):
     """
     Quadratic Agent: 
@@ -51,19 +52,24 @@ class QuadraticAgent(Agent):
         ## TODO
         pass
 
-    def predict(self, obs, eps=0):
+    def predict(self, obs, eps= 0.1):
         H = -self.convertW2S(self.weights)
-        R = H[len(obs):, len(obs):]
+        R = sparse.csc_matrix(H[len(obs):, len(obs):])
         Hax = H[:len(obs), len(obs):]
         obs = self.preprocess_obs(obs)
         ub = self.env.action_space.high
+        
         # efficiently solve the Quadratic program argmin_a 0 + a^T R a + 2 * a^T Hax x using
         action = solve_qp(R, Hax.T @ obs,
                  None, None, # no inequality constraints
                  None, None, # no equality constraints
                 lb = -ub, ub = ub,
                 solver='osqp')
+        action = np.clip(action, self.env.action_space.low, self.env.action_space.high)
         # print(f"Predicted action: {action}")
+
+        if np.random.rand() < eps:
+            action = self.env.action_space.sample()
         return action
 
     def convertW2S(self, w):

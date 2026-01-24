@@ -3,8 +3,10 @@ from collections import namedtuple
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import sys, os
+from lspi.utils.vis_utils import vis_memory_visited_state
 
-Sample = namedtuple('Sample', ['s', 'a', 'r', 's_', 'done'])
+Sample = namedtuple('Sample', ['s', 'a', 'r', 's_', 'done', 'pos'])
 
 
 class LSPolicyIteration:
@@ -55,8 +57,11 @@ class LSPolicyIteration:
                     count += 1
                     # print("percentage done = {:.2f}%".format(count / (self.memory_size + 1) * 100)) if agent is None else print("epi update done = {:.2f}%".format(count / update_size * 100))
             action = self.env.action_space.sample() if agent is None else agent.predict(obs)
-            next_obs, reward, done, _ = self.env.step(action)
-            self.memory.append(Sample(obs, action, reward, next_obs, done))
+            next_obs, reward, done, info = self.env.step(action)
+            if self.env.__class__.__name__ in ["SimulateObsFeature", "RealObsFeature"]:
+                self.memory.append(Sample(obs, info['action_actual'], reward, next_obs, done, self.env.full_param_clipped())) if self.env.cfg is not None else self.memory.append(Sample(obs, action, reward, next_obs, done, None))
+            else: 
+                self.memory.append(Sample(obs, action, reward, next_obs, done, None))
             obs = next_obs
             if self.memory_type == 'sample':
                 count += 1
@@ -105,34 +110,13 @@ class LSPolicyIteration:
                     # reward features
                 self.b_all += sample.r * feat_s
 
-    def load_memory(self, memory, vis = False):
+    def load_memory(self, memory, vis = False, savefigto = None):
         self.memory = memory
+        if self.eval_type == 'batch':
+            self._batch_prep()
         if vis:
-            # print state (normalized), reward trajectory in 2 subplots
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
-            visited_states, rewards, dones = [], [], []
-            for sample in memory:
-                visited_states.append(sample.s)
-                rewards.append(sample.r)
-                dones.append(sample.done)
-            ax1.plot(visited_states)
-            ax1.set_title("Visited States Over Time")
-            ax1.set_xlabel("Time Step")
-            ax1.set_ylabel("State Value")
-            ax2.plot(rewards)
-            ax2.hlines(0, 0, len(rewards), colors='r', linestyles='dashed')
-            ax2.set_title("Rewards Over Time")
-            ax2.set_xlabel("Time Step")
+            vis_memory_visited_state(self) if savefigto is None else vis_memory_visited_state(self, savefigto=savefigto)
 
-
-            ax2.set_ylabel("Reward Value")
-            plt.tight_layout()
-            plt.show()
-
-            
-        
-
- 
 
     def eval(self):
         k = self.agent.features_size

@@ -32,7 +32,7 @@ class Agent:
         pass
 
 
-    def predict(self, obs, eps = 0.0):
+    def predict(self, obs, eps = 0.05):
         values = np.dot(
             self.weights.reshape(self.action_size, self.features_size),
             self.get_features(obs))

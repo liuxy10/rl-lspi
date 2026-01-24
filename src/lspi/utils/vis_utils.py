@@ -37,9 +37,52 @@ def plot_state_trajectory(ep, state_traj, max_length = 50, savefigto=None):
         plt.title(f'Episode {ep+1} State Trajectory')
     plt.show()
 
-def vis_memory_visited_state(baseline):
+def vis_memory_visited_state(baseline, savefigto=None):
     visited_states, rewards, dones = [], [], []
-    if baseline.env.__class__.__name__ == "Simulate":
+    if "ObsFeature" in baseline.env.__class__.__name__:
+        
+        # print state (normalized), reward trajectory in 2 subplots
+        if "pos" in baseline.memory[0]._fields:
+            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(7, 9))
+            params = []
+        else:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5, 6))
+        visited_states, rewards, dones = [], [], []
+
+        for sample in baseline.memory:
+            visited_states.append(sample.s)
+            rewards.append(sample.r)
+            dones.append(sample.done)
+            if "pos" in baseline.memory[0]._fields:
+                params.append(sample.pos)
+        for i in range(len(visited_states[0])):
+            ax1.plot(np.array(visited_states)[:,i], label = f"s_{i}" if baseline.env.cfg is None 
+                                                         else baseline.env.cfg.target_names[i])
+            ax1.hlines(baseline.env.goal[i], xmin=0, xmax=len(visited_states), linestyles='dashed', 
+                                 color=ax1.lines[-1].get_color()) # same color as line
+            
+        ax1.set_title("Visited States Over Time")
+        ax1.set_xlabel("Time Step")
+        ax1.set_ylabel("State Value")
+        ax1.legend()
+        ax2.plot(np.array([rewards[i].reshape(-1) if np.isscalar(rewards[i]) else rewards[i] for i in range(len(rewards))]))
+        ax2.set_title("Rewards Over Time")
+        ax2.set_xlabel("Time Step")
+        ax2.set_ylabel("Reward Value")
+        if "pos" in baseline.memory[0]._fields:
+            ax3.plot(np.array(params))
+            ax3.set_title("Parameters Over Time")
+            ax3.set_xlabel("Time Step")
+            ax3.set_ylabel("Parameter Value")
+        plt.tight_layout()
+        plt.show()
+        if savefigto:
+            plt.savefig(savefigto)
+            print(f"Saved visited state plot to {savefigto}")
+        
+            
+
+    elif baseline.env.__class__.__name__ == "Simulate":
         plt.figure(figsize=(8, 8))
         # if "Puddle" in baseline.env.spec.id:  # draw square (0,1) for puddle world
         #     plt.plot([0, 1, 1, 0, 0], [0, 0, 1, 1, 0], color='blue', alpha=0.5)
@@ -67,6 +110,7 @@ def vis_memory_visited_state(baseline):
         #     plt.axis("equal")
         plt.legend()
         plt.show()
+    
     else: 
         # print state (normalized), reward trajectory in 2 subplots
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
@@ -78,7 +122,7 @@ def vis_memory_visited_state(baseline):
         ax1.set_title("Visited States Over Time")
         ax1.set_xlabel("Time Step")
         ax1.set_ylabel("State Value")
-        ax2.plot(rewards)
+        ax2.plot(np.array(rewards).reshape(-1)) 
         ax2.set_title("Rewards Over Time")
         ax2.set_xlabel("Time Step")
 
@@ -86,7 +130,7 @@ def vis_memory_visited_state(baseline):
         ax2.set_ylabel("Reward Value")
         plt.tight_layout()
         plt.show()
-
+    
 
 def vis_Q(bl, n_grid = 30):
     num_actions = len(bl.env.actions)
