@@ -183,7 +183,8 @@ class LSPolicyIteration:
                 # raise NotImplementedError("Batch method not implemented for Quadratic Agent yet")
                 A = self.A_all.sum(0)
                 b = self.b_all
-                w = np.linalg.solve(A, b)
+                w = np.linalg.solve(A, b) if np.linalg.det(A) != 0 else np.linalg.pinv(A).dot(b).reshape(-1)
+                # w = np.linalg.pinv(A).dot(b).reshape(-1)
             else:
                 A = np.array([
                     self.A_all[idx, self.agent.predict(sample.s_)]
